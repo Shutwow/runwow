@@ -4,7 +4,9 @@ Plans de course à pied (5 km → ultra-trail) avec renforcement musculaire et m
 Le plan est calculé **uniquement par des règles fixes** : pas d'IA, mêmes entrées = même plan.
 Toutes les règles sont lisibles dans l'appli (onglet *Plus → Les règles du plan*).
 
-## Lancer l'appli
+**En ligne : https://shutwow.github.io/runwow/** (GitHub Pages, mis à jour à chaque envoi sur la branche `main`).
+
+## Lancer l'appli en local
 
 Aucune installation : un petit serveur PowerShell suffit.
 
