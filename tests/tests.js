@@ -255,6 +255,56 @@
   check(!RP.history.analyze(enActs.slice(0, 3), TODAY).enough, 'Historique : 3 sorties ne devraient pas suffire');
   out.push(`Historique : ${h.currentKm} km/sem, ${h.perWeek} sorties/sem, plus longue ${h.longestKm} km, jours ${h.runDays.map((d) => U.DAYS_SHORT[d]).join(' ')}, VMA ${h.vma} (${h.vmaFrom.name}), niveau ${h.level}`);
 
+  // ---- R8-R10 : ajustement des allures ----
+  {
+    const prof = { ...base, startDate: '2026-09-07', raceDate: '2027-03-28', vma: 14, refDistKm: '', refTime: '' };
+    const pl = RP.plan.generate(prof, {});
+    const past = (sub) => pl.weeks.flatMap((w) => w.days.flatMap((d) => d.items)).filter((i) => i.kind === 'run' && i.sub === sub && i.hard === (sub !== 'ef') && i.date < TODAY);
+    const mk = (items, speedOf, elevPerKm = 5) => {
+      const st = { activities: {}, syncInfo: {}, adapt: {} };
+      items.forEach((it, i) => {
+        const id = `a${i}`;
+        const speed = speedOf(it);
+        st.activities[id] = { id, type: 'Run', date: it.date, km: it.km, min: (it.km / speed) * 60, elev: it.km * elevPerKm, race: false, name: 'x' };
+        st.syncInfo[it.id] = { ids: [id], date: it.date, ratio: 1, km: it.km, names: ['x'] };
+      });
+      return st;
+    };
+    const planned = (it) => it.km / (it.min / 60);
+    const q3 = past('quality').slice(-3);
+    let r = RP.adapt.evaluate(pl, mk(q3, (it) => planned(it) * 1.08), TODAY);
+    check(r.update && r.update.rule === 'R9' && r.update.vma === 14.3, `R9 : +2 % attendu, obtenu ${JSON.stringify(r.update)}`);
+    r = RP.adapt.evaluate(pl, mk(q3, (it) => planned(it) * 0.9), TODAY);
+    check(!r.update && r.suggestion && r.suggestion.vma === 13.7, `R9 : proposition -2 % attendue, obtenu ${JSON.stringify(r.suggestion)}`);
+    r = RP.adapt.evaluate(pl, mk(q3, (it) => planned(it) * 1.03), TODAY);
+    check(!r.update && !r.suggestion, 'R9 : +3 % ne doit rien changer');
+    r = RP.adapt.evaluate(pl, mk(q3, (it) => planned(it) * 1.08, 30), TODAY);
+    check(!r.update, 'R9 : séances avec dénivelé à ignorer');
+    // R8 : course marquée « course », prioritaire
+    const stR = mk(q3, (it) => planned(it) * 1.08);
+    stR.activities.race = { id: 'race', type: 'Run', date: '2026-11-15', km: 10, min: 40, elev: 20, race: true, name: '10 km de la ville' };
+    r = RP.adapt.evaluate(pl, stR, TODAY);
+    check(r.update && r.update.rule === 'R8' && r.update.vma > 16 && r.seenRaces.includes('race'), `R8 : mise à jour attendue, obtenu ${JSON.stringify(r.update)}`);
+    stR.adapt = { applied: ['race'], lastChange: TODAY };
+    r = RP.adapt.evaluate(pl, stR, TODAY);
+    check(!r.update, 'R8/R9 : rien ne doit être réappliqué après un changement de VMA');
+    const slowRace = mk([], () => 1);
+    slowRace.activities.r2 = { id: 'r2', type: 'Run', date: '2026-11-15', km: 10, min: 60, elev: 0, race: true, name: 'lente' };
+    check(!RP.adapt.evaluate(pl, slowRace, TODAY).update, 'R8 : une course lente ne doit pas baisser la VMA');
+    // R10 : footings
+    const e3 = past('ef').slice(-3);
+    r = RP.adapt.evaluate(pl, mk(e3, () => 14 * 0.82), TODAY);
+    check(r.easy && r.easy.n >= 2, `R10 : footings trop rapides non détectés ${JSON.stringify(r.easy)}`);
+    r = RP.adapt.evaluate(pl, mk(e3, () => 14 * 0.7), TODAY);
+    check(!r.easy, 'R10 : footings à la bonne allure signalés à tort');
+    // Trail : pas de R9 / R10
+    const plT = RP.plan.generate({ ...prof, terrain: 'trail', distanceKm: 30, dplus: 1200 }, {});
+    const qT = plT.weeks.flatMap((w) => w.days.flatMap((d) => d.items)).filter((i) => i.sub === 'quality' && i.hard && i.date < TODAY).slice(-3);
+    r = RP.adapt.evaluate(plT, mk(qT, (it) => planned(it) * 1.2), TODAY);
+    check(!r.update && !r.easy, 'Trail : R9/R10 ne doivent pas s\'appliquer');
+    out.push(`R8-R10 : ${q3.length} séances de qualité et ${e3.length} footings simulés`);
+  }
+
   // ---- Export .zip (asynchrone : stocké et compressé) ----
   (async () => {
     const enc = new TextEncoder();

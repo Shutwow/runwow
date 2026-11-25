@@ -73,6 +73,15 @@
       ],
     },
     {
+      group: 'Ajustement automatique des allures (avec Strava)',
+      items: [
+        ['R8 · Course', 'Une sortie marquée « Course » dans Strava (au moins 3 km, terrain plat) qui donne une VMA plus haute que la tienne met ta VMA à jour : toutes les allures du plan sont recalculées. Une course plus lente ne baisse jamais ta VMA automatiquement.'],
+        ['R9 · Séances de qualité', '3 séances de qualité de suite courues au moins 5 % plus vite que prévu : VMA +2 %. 3 séances de suite au moins 7 % plus lentes : l\'appli te propose -2 %, sans l\'appliquer d\'elle-même. Seules les séances réalisées à 80 % au moins et sur terrain plat comptent, et seulement depuis le dernier changement de VMA.'],
+        ['R10 · Footings', 'Si 2 de tes 3 derniers footings sont plus rapides que le haut de ta zone d\'endurance fondamentale (+3 %), un conseil s\'affiche pour ralentir. Le plan ne change pas.'],
+        ['Trail et dénivelé', 'Les sorties avec plus de 15 m de D+ par km sont ignorées, et R9 et R10 ne s\'appliquent pas aux plans trail : l\'allure y dépend trop du terrain.'],
+      ],
+    },
+    {
       group: 'Synchronisation Strava et montre',
       items: [
         ['R7 · Sortie Strava', 'Une sortie de course (route, trail, tapis) coche la séance prévue le même jour ; à défaut, une séance de la veille ou du lendemain dans la même semaine. Plusieurs sorties le même jour s\'additionnent.'],

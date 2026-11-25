@@ -75,7 +75,7 @@
     let vmaSource = '';
     if (+profile.vma > 0) {
       vma = +profile.vma;
-      vmaSource = 'VMA saisie';
+      vmaSource = profile.vmaNote || 'VMA saisie';
     } else if (+profile.refDistKm > 0 && U.parseTime(profile.refTime)) {
       vma = P.estimateVma(+profile.refDistKm, U.parseTime(profile.refTime));
       vmaSource = `estimée d'après ${profile.refDistKm} km en ${profile.refTime}`;
@@ -236,7 +236,10 @@
       const km = c.level === 'debutant' ? 3 : 5;
       return { title: `Test ${km} km`, focus: 'Mesurer tes progrès et recalculer tes allures.',
         blocks: [WU(c, 20), { label: `${km} km chrono, le plus régulier possible (départ prudent, accélère sur le dernier km)`, parts: [{ zone: 'a5k', km }] }, CD(c, 10)],
-        notes: [`Reporte ton chrono dans ton profil (course de référence : ${km} km) : tes allures seront recalculées pour le cycle suivant.`] };
+        notes: [
+          `Avec Strava : enregistre les ${km} km chrono comme une activité séparée et marque-la « Course » : ta VMA et tes allures seront mises à jour automatiquement (règle R8).`,
+          `Sans Strava : reporte ton chrono dans ton profil (course de référence : ${km} km).`,
+        ] };
     },
     rappel: (p, c, k) => {
       if (c.trail) {

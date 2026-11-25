@@ -6,7 +6,7 @@
   const KEY = 'runwow-state-v1';
 
   // ---------- État ----------
-  const blankState = () => ({ profile: null, overrides: {}, statuses: {}, statusSource: {}, moves: {}, downgrades: {}, evaluated: {}, breaks: [], log: [], activities: {}, syncInfo: {} });
+  const blankState = () => ({ profile: null, overrides: {}, statuses: {}, statusSource: {}, moves: {}, downgrades: {}, evaluated: {}, breaks: [], log: [], activities: {}, syncInfo: {}, adapt: { applied: [], history: [] } });
   function loadState() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
@@ -151,6 +151,28 @@
     window.open(web, '_blank', 'noopener');
   }
 
+  // ---------- Ajustement des allures (R8-R10) ----------
+  function setVma(vma, rule, msg) {
+    const today = U.todayISO();
+    const prev = plan ? Math.round(plan.c.vma * 10) / 10 : null;
+    Object.assign(state.profile, { vma, refDistKm: '', refTime: '', vmaNote: `mise à jour le ${U.fmtDateShort(U.parseDate(today))} (règle ${rule})` });
+    state.adapt.lastChange = today;
+    state.adapt.history.unshift({ date: today, from: prev, to: vma, rule, msg });
+    state.log.unshift({ date: today, rule, msg });
+  }
+  function adaptPaces() {
+    if (!plan) return null;
+    state.adapt = Object.assign({ applied: [], history: [] }, state.adapt);
+    const r = RP.adapt.evaluate(plan, state, U.todayISO());
+    state.adapt.applied = [...new Set([...state.adapt.applied, ...r.seenRaces])];
+    if (r.update) setVma(r.update.vma, r.update.rule, r.update.msg);
+    state.adapt.suggestion = r.suggestion && r.suggestion.key !== state.adapt.dismissed ? r.suggestion : null;
+    state.adapt.easy = r.easy;
+    saveState();
+    if (r.update) regen();
+    return r.update;
+  }
+
   // ---------- Synchro Strava ----------
   async function syncStrava(silent) {
     const cfg = RP.strava.load();
@@ -166,10 +188,12 @@
       if (rep.offPlan) parts.push(`${rep.offPlan} sortie(s) hors plan`);
       state.lastSyncMsg = `Strava : ${parts.join(', ')}.`;
       saveState();
+      const vmaUpdate = adaptPaces();
       const changes = evaluate();
       ui.syncing = false;
       render();
-      if (!silent || rep.done || rep.partial || rep.missed) toast(changes.length ? changes[changes.length - 1].msg : state.lastSyncMsg);
+      if (vmaUpdate) toast(vmaUpdate.msg);
+      else if (!silent || rep.done || rep.partial || rep.missed) toast(changes.length ? changes[changes.length - 1].msg : state.lastSyncMsg);
     } catch (e) {
       ui.syncing = false;
       render();
@@ -390,6 +414,9 @@
       <div class="tags"><span class="tag ph-${w.phase}"><span class="dot"></span>${RP.plan.PHASE_LABELS[w.phase]}</span><span class="tag">Semaine ${wi + 1}/${plan.nWeeks}</span><span class="tag">${RP.plan.WEEK_TYPE_LABELS[w.type]}</span></div></div>`;
     html += weekStrip(w);
     if (state.log.length && state.log[0].date === t) html += `<div class="banner info">${icon('info')}<div>${esc(state.log[0].msg)}</div></div>`;
+    const ad = state.adapt || {};
+    if (ad.easy) html += `<div class="banner warn">${icon('warn')}<div><b>Footings trop rapides</b> : ${ad.easy.n} de tes ${ad.easy.of} derniers footings à ${esc(ad.easy.pace)} au lieu de ${esc(ad.easy.target)}. Ralentis : c'est ce qui rend les séances dures efficaces (règle R10).</div></div>`;
+    if (ad.suggestion) html += `<div class="banner info">${icon('info')}<div>${esc(ad.suggestion.msg)}<div class="btn-group" style="margin-top:8px"><button class="btn small dark" data-action="vma-lower">Baisser ma VMA</button><button class="btn small" data-action="vma-dismiss">Ignorer</button></div></div></div>`;
 
     if (day && day.items.length) {
       html += day.items.map((it) => sessionCard(it, w)).join('');
@@ -521,9 +548,22 @@
         <div class="big num">${U.round1(c.vma)}<small>km/h</small></div>
         <p style="margin:8px 0 0;opacity:.75;font-size:13px">${esc(c.vmaSource)}.</p>
         ${!c.trail ? `<p style="margin:10px 0 0">Allure course : <b class="num">${c.pace('race')}</b>${c.targetCapped ? ' (plafonnée : objectif trop ambitieux pour l\'instant)' : ''}</p>` : '<p style="margin:10px 0 0;opacity:.75;font-size:13px">En trail, on s\'entraîne à l\'effort : ces allures valent sur le plat.</p>'}</div>
+      ${renderVmaHistory()}
       <div class="card"><h2>Zones d'entraînement</h2>${zones}</div>
       <div class="card"><h2>Temps prédits sur route</h2><div class="pred">${preds}</div>
       <p class="muted small" style="margin-bottom:0">Prédictions théoriques avec une préparation spécifique. Mets à jour ta course de référence dans ton profil pour les affiner.</p></div>`;
+  }
+
+  function renderVmaHistory() {
+    const ad = state.adapt || {};
+    const strava = !!RP.strava.load().refresh;
+    const hist = (ad.history || []).slice(0, 6);
+    const items = hist.map((h) => `<li><b class="num">${h.from != null ? `${h.from} → ` : ''}${h.to} km/h</b> · ${esc(U.fmtDateShort(U.parseDate(h.date)))} · ${esc(h.msg)}</li>`).join('');
+    const intro = strava
+      ? (plan.c.trail ? 'Strava connecté : ta VMA monte automatiquement après une course sur le plat (R8).' : 'Strava connecté : ta VMA s\'ajuste automatiquement après une course (R8) ou 3 séances de qualité nettement plus rapides (R9).')
+      : 'Connecte Strava (Réglages) pour que ta VMA et tes allures s\'ajustent automatiquement à tes sorties.';
+    return `<div class="card"><h2>Ajustement automatique</h2><p class="muted small" style="margin-top:0">${intro}</p>
+      ${items ? `<ul class="notes" style="color:var(--text)">${items}</ul>` : '<p class="muted small" style="margin:0">Aucun ajustement pour l\'instant.</p>'}</div>`;
   }
 
   // ---------- Vue : Exercices ----------
@@ -867,6 +907,20 @@
         syncSetup(form);
         break;
       }
+      case 'vma-lower': {
+        const s = state.adapt && state.adapt.suggestion;
+        if (!s) break;
+        setVma(s.vma, 'R9', `VMA baissée à ta demande : ${s.vma} km/h, allures recalculées.`);
+        state.adapt.suggestion = null;
+        saveState();
+        regen();
+        render();
+        toast(`VMA ${s.vma} km/h : allures recalculées.`);
+        break;
+      }
+      case 'vma-dismiss':
+        if (state.adapt && state.adapt.suggestion) { state.adapt.dismissed = state.adapt.suggestion.key; state.adapt.suggestion = null; saveState(); render(); }
+        break;
       case 'open-strava':
         openStrava(a.dataset.url);
         break;
