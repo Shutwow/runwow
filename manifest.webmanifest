@@ -1,0 +1,14 @@
+{
+  "name": "RunwoW — plans de course",
+  "short_name": "RunwoW",
+  "description": "Plans de course à pied avec renforcement et mobilité, générés par des règles fixes.",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f5",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
