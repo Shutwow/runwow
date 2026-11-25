@@ -221,6 +221,64 @@
     out.push(`R7 : ${JSON.stringify(rep)}`);
   }
 
+  // ---- Historique Strava : lecture CSV (anglais / français) et analyse ----
+  const TODAY = '2026-11-25';
+  const monday = U.mondayOf(U.parseDate(TODAY));
+  const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  const sample = [];
+  for (let k = 1; k <= 10; k++) {
+    const ws = U.addDays(monday, -7 * k);
+    sample.push({ d: U.addDays(ws, 1), type: 'Run', km: 8, sec: 48 * 60, elev: 40, name: 'Footing' });
+    sample.push({ d: U.addDays(ws, 3), type: 'Run', km: 10, sec: 55 * 60, elev: 60, name: 'Tempo' });
+    sample.push({ d: U.addDays(ws, 6), type: 'Run', km: 15, sec: 90 * 60, elev: 120, name: 'Sortie longue' });
+    sample.push({ d: U.addDays(ws, 5), type: 'Ride', km: 40, sec: 90 * 60, elev: 300, name: 'Vélo' });
+  }
+  sample.push({ d: U.addDays(monday, -10), type: 'Run', km: 5, sec: 12 * 60, elev: 0, name: 'GPS fou' });
+  const enCSV = ['Activity ID,Activity Date,Activity Name,Activity Type,Activity Description,Elapsed Time,Distance,Max Heart Rate,Elapsed Time,Moving Time,Distance,Elevation Gain']
+    .concat(sample.map((s, i) => `${1000 + i},"${EN_MONTHS[s.d.getMonth()]} ${s.d.getDate()}, ${s.d.getFullYear()}, 6:45:00 AM",${s.name},${s.type},"Desc, avec virgule",${s.sec + 60},${s.km.toFixed(2)},150,${s.sec + 60},${s.sec},${(s.km * 1000).toFixed(1)},${s.elev}`)).join('\n');
+  const frCSV = ["ID de l'activité,Date de l'activité,Nom de l'activité,Type d'activité,Temps écoulé,Distance,Temps de déplacement,Dénivelé positif"]
+    .concat(sample.map((s, i) => `${1000 + i},"${s.d.getDate()} ${FR_MONTHS[s.d.getMonth()]} ${s.d.getFullYear()}, 06:45:00",${s.name},${s.type === 'Run' ? 'Course à pied' : 'Vélo'},${s.sec + 60},"${s.km.toFixed(2).replace('.', ',')}",${s.sec},${s.elev}`)).join('\n');
+  const enActs = RP.history.activitiesFromCSV(enCSV);
+  const frActs = RP.history.activitiesFromCSV(frCSV);
+  check(enActs.length === sample.length && frActs.length === sample.length, `Historique : lignes lues ${enActs.length}/${frActs.length} sur ${sample.length}`);
+  check(enActs[0].date === U.fmtISO(sample[0].d) && Math.abs(enActs[0].km - 8) < 0.01 && enActs[0].min === 48, `Historique : ligne anglaise mal lue ${JSON.stringify(enActs[0])}`);
+  check(frActs[0].date === U.fmtISO(sample[0].d) && Math.abs(frActs[0].km - 8) < 0.01 && frActs[0].min === 48, `Historique : ligne française mal lue ${JSON.stringify(frActs[0])}`);
+  const h = RP.history.analyze(enActs, TODAY);
+  const hf = RP.history.analyze(frActs, TODAY);
+  // 33 km/semaine + la sortie « GPS fou » de 5 km comptée en volume (semaine -2) : (33×4 + 5) / 4 = 34
+  check(h.enough && h.currentKm === 34 && h.longestKm === 15, `Historique : volume ${h.currentKm} / plus longue ${h.longestKm}`);
+  check(JSON.stringify(h.runDays) === '[1,3,6]' && h.longDay === 6, `Historique : jours ${h.runDays} / sortie longue ${h.longDay}`);
+  check(h.vma > 11 && h.vma < 14 && h.vmaFrom.name === 'Tempo', `Historique : VMA ${h.vma} d'après ${h.vmaFrom && h.vmaFrom.name} (l'erreur GPS doit être écartée)`);
+  check(h.level === 'intermediaire', `Historique : niveau ${h.level}`);
+  check(JSON.stringify(hf.runDays) === JSON.stringify(h.runDays) && hf.currentKm === h.currentKm && hf.vma === h.vma, 'Historique : résultats anglais et français différents');
+  check(!RP.history.analyze(enActs.slice(0, 3), TODAY).enough, 'Historique : 3 sorties ne devraient pas suffire');
+  out.push(`Historique : ${h.currentKm} km/sem, ${h.perWeek} sorties/sem, plus longue ${h.longestKm} km, jours ${h.runDays.map((d) => U.DAYS_SHORT[d]).join(' ')}, VMA ${h.vma} (${h.vmaFrom.name}), niveau ${h.level}`);
+
+  // ---- Export .zip (asynchrone : stocké et compressé) ----
+  (async () => {
+    const enc = new TextEncoder();
+    const csvBytes = enc.encode(enCSV);
+    const stored = RP.zip.zip([{ name: 'profile.csv', data: enc.encode('x') }, { name: 'activities.csv', data: csvBytes }]);
+    const a1 = await RP.history.readExport(stored);
+    // Archive compressée (deflate), construite à la main
+    const comp = new Uint8Array(await new Response(new Blob([csvBytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    const name = enc.encode('export_1/activities.csv');
+    const crc = RP.zip.crc32(csvBytes);
+    const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
+    const u32 = (v) => [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff];
+    const local = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(8), ...u16(0), ...u16(0), ...u32(crc), ...u32(comp.length), ...u32(csvBytes.length), ...u16(name.length), ...u16(0)]);
+    const central = new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(8), ...u16(0), ...u16(0), ...u32(crc), ...u32(comp.length), ...u32(csvBytes.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(0)]);
+    const cdOff = local.length + name.length + comp.length;
+    const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(1), ...u16(1), ...u32(central.length + name.length), ...u32(cdOff), ...u16(0)]);
+    const a2 = await RP.history.readExport(new Blob([local, name, comp, central, name, end]));
+    const a3 = await RP.history.readExport(new Blob([frCSV], { type: 'text/csv' }));
+    const ok = a1.length === sample.length && a2.length === sample.length && a3.length === sample.length;
+    const line = `Export .zip : stocké ${a1.length}, compressé ${a2.length}, CSV ${a3.length} lignes — ${ok ? 'OK' : 'ÉCHEC'}`;
+    window.TEST_ZIP = ok;
+    document.getElementById('out').textContent += `\n${line}`;
+  })().catch((e) => { window.TEST_ZIP = false; document.getElementById('out').textContent += `\nExport .zip : ÉCHEC ${e.message}`; });
+
   const summary = `${fail === 0 ? 'OK' : 'ÉCHEC'} — ${pass} vérifications réussies, ${fail} échecs. Plans : ${stats.plans}, semaines : ${stats.weeks}. ` +
     `Écart max volume réel/cible : ${Math.round(stats.maxDev * 100)} %. Part d'intensité max (semaine de charge) : ${Math.round(stats.maxIntensity * 100)} %. ` +
     `Semaines avec renfo non placé : ${stats.strengthNotPlaced}. Semaines à plus de 20 % d'écart de volume : ${stats.devOver20 || 0} (ex. ${stats.devEx || '-'}). ` +

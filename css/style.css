@@ -410,4 +410,14 @@ ol.steps { padding-left: 20px; margin: 8px 0; font-size: 14px; }
 ol.steps li { margin-bottom: 6px; }
 code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
 
+/* Historique Strava */
+.hist { margin-top: 14px; padding: 14px; border-radius: 16px; background: var(--surface-2); }
+.hist-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 420px) { .hist-grid { grid-template-columns: repeat(2, 1fr); } }
+.hist-grid div { font-size: 12px; color: var(--muted); line-height: 1.2; }
+.hist-grid b { display: block; font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--text); }
+.hist .chart button { cursor: default; opacity: 0.85; }
+details.help { margin-top: 12px; border-top: 1px solid var(--border); }
+details.help > summary { cursor: pointer; padding: 10px 0 2px; font-weight: 600; font-size: 14px; color: var(--accent); }
+
 .empty { text-align: center; padding: 26px 10px; color: var(--muted); }

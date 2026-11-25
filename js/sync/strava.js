@@ -16,6 +16,7 @@
   function authorizeUrl(cfg) {
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
     cfg.oauthState = state;
+    cfg.returnHash = location.hash || '#/plus';
     save(cfg);
     const q = new URLSearchParams({
       client_id: cfg.clientId, response_type: 'code', redirect_uri: redirectUri(),
@@ -37,7 +38,7 @@
     const q = new URLSearchParams(location.search);
     if (!q.has('code') && !q.has('error')) return null;
     const cfg = load();
-    const clean = () => history.replaceState(null, '', location.pathname + (location.hash || '#/plus'));
+    const clean = () => history.replaceState(null, '', location.pathname + (cfg.returnHash || location.hash || '#/plus'));
     if (q.get('error')) { clean(); return { ok: false, msg: 'Connexion Strava annulée.' }; }
     if (!cfg.oauthState || q.get('state') !== cfg.oauthState) { clean(); return { ok: false, msg: 'Réponse Strava inattendue : relance la connexion.' }; }
     if (!(q.get('scope') || '').includes('activity:read')) { clean(); return { ok: false, msg: 'Coche l\'accès aux activités sur la page Strava pour que la synchro fonctionne.' }; }
@@ -80,7 +81,8 @@
       const list = await res.json();
       list.forEach((a) => out.push({
         id: String(a.id), name: a.name, type: a.sport_type || a.type, date: (a.start_date_local || '').slice(0, 10),
-        km: Math.round((a.distance || 0) / 100) / 10, elev: Math.round(a.total_elevation_gain || 0), min: Math.round((a.moving_time || 0) / 60),
+        km: Math.round((a.distance || 0) / 100) / 10, elev: Math.round(a.total_elevation_gain || 0), min: Math.round((a.moving_time || 0) / 6) / 10,
+        race: a.workout_type === 1, // sortie marquée « course » dans Strava
       }));
       if (list.length < 100) break;
     }

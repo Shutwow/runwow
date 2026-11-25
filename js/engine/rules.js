@@ -61,6 +61,18 @@
       ],
     },
     {
+      group: 'Personnalisation par l\'historique Strava',
+      items: [
+        ['Source', 'Tes sorties de course des 6 derniers mois, lues via Strava connecté ou depuis l\'export Strava (.zip ou activities.csv). Le fichier est lu sur ton appareil.'],
+        ['Volume actuel', 'Moyenne des 4 dernières semaines complètes.'],
+        ['Plus longue sortie', 'La plus longue des 8 dernières semaines.'],
+        ['Jours habituels', 'Les jours où tu as couru au moins 3 semaines sur les 8 dernières (2 jours minimum). Jour de sortie longue : celui où tombe le plus souvent ta plus longue sortie de la semaine.'],
+        ['VMA', 'D\'après ta dernière sortie marquée « course » dans Strava si elle existe ; sinon d\'après ta 2e meilleure sortie plate de plus de 3 km (la meilleure est écartée pour éviter une erreur GPS). Une sortie d\'entraînement sous-estime un peu la VMA : c\'est volontairement prudent.'],
+        ['Niveau', 'Débutant sous 15 km/semaine ou 11,5 km/h de VMA ; confirmé avec au moins 40 km/semaine et 15 km/h de VMA (ou 60 km/semaine, ou 17 km/h) ; intermédiaire entre les deux.'],
+        ['Contrôle', 'Les valeurs sont seulement reportées dans le formulaire : tu les vérifies avant de générer le plan.'],
+      ],
+    },
+    {
       group: 'Synchronisation Strava et montre',
       items: [
         ['R7 · Sortie Strava', 'Une sortie de course (route, trail, tapis) coche la séance prévue le même jour ; à défaut, une séance de la veille ou du lendemain dans la même semaine. Plusieurs sorties le même jour s\'additionnent.'],

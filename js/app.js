@@ -21,7 +21,7 @@
   let state = loadState();
   let plan = null;
   let planError = null;
-  const ui = { modalId: null, openWeeks: {}, search: '', setupErrors: [] };
+  const ui = { modalId: null, openWeeks: {}, search: '', setupErrors: [], draft: null, history: null, busy: false };
 
   function regen() {
     plan = null;
@@ -555,6 +555,75 @@
     return html;
   }
 
+  // Formulaire de connexion Strava (sans « form » imbriqué : utilisable dans le profil)
+  function stravaConnectHTML() {
+    const host = location.hostname;
+    return `<ol class="steps">
+        <li>Sur <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>, crée une application : nom « RunwoW », catégorie « Training », site web <code>https://${esc(host)}</code>, <b>Authorization Callback Domain : <code>${esc(host)}</code></b>.</li>
+        <li>Copie ci-dessous le <b>Client ID</b> et le <b>Client Secret</b>.</li>
+        <li>Connecte ton compte et autorise l'accès aux activités.</li></ol>
+      <div class="form"><div class="grid2">
+        <div class="field"><label class="lbl" for="st-id">Client ID</label><input id="st-id" data-strava="clientId" type="text" inputmode="numeric" autocomplete="off"></div>
+        <div class="field"><label class="lbl" for="st-secret">Client Secret</label><input id="st-secret" data-strava="clientSecret" type="text" autocomplete="off" spellcheck="false"></div>
+      </div><button class="btn primary" type="button" data-action="strava-save">Enregistrer et connecter</button></div>
+      <p class="muted small">C'est ta propre application Strava : l'identifiant et le secret restent sur cet appareil et ne sont pas inclus dans l'export.</p>`;
+  }
+
+  // ---------- Historique : analyse et pré-remplissage du profil ----------
+  function historyCardHTML() {
+    const cfg = RP.strava.load();
+    const h = ui.history;
+    let res = '';
+    if (h && h.enough) {
+      const max = Math.max(1, ...h.weekly.map((w) => w.km));
+      const bars = h.weekly.slice().reverse().map((w) => `<button type="button" tabindex="-1" class="ph-base" style="height:${Math.max(4, Math.round((w.km / max) * 100))}%" title="${esc(`Semaine du ${U.fmtDateShort(U.parseDate(w.start))} : ${Math.round(w.km)} km`)}"></button>`).join('');
+      const from = h.vmaFrom ? ` · VMA d'après ${h.vmaFrom.race ? 'ta course' : 'ta meilleure sortie'} « ${esc(h.vmaFrom.name || 'sans nom')} » (${h.vmaFrom.km} km en ${esc(h.vmaFrom.time)}, ${esc(U.fmtDateShort(U.parseDate(h.vmaFrom.date)))})` : '';
+      const trail = h.trailShare >= 0.5 || h.dplusPerKm >= 25 ? `<div class="banner info">${icon('info')}<div>Tu cours surtout en nature (${Math.round(h.trailShare * 100)} % de trails, ${h.dplusPerKm} m D+/km en moyenne) : pense au terrain « Trail » si c'est ton objectif.</div></div>` : '';
+      res = `<div class="hist">
+        <div class="hist-grid"><div><b class="num">${h.currentKm}</b>km / sem.</div><div><b class="num">${String(h.perWeek).replace('.', ',')}</b>sorties / sem.</div><div><b class="num">${String(h.longestKm).replace('.', ',')}</b>km au plus long</div><div><b class="num">${h.vma ? String(h.vma).replace('.', ',') : '–'}</b>VMA km/h</div></div>
+        <div class="chart" style="height:56px;margin-top:12px" aria-hidden="true">${bars}</div>
+        <div class="chart-axis"><span>il y a 12 sem.</span><span>semaine dernière</span></div>
+        <p class="small muted" style="margin:10px 0 0">Jours habituels : ${h.runDays.map((d) => U.DAYS_SHORT[d]).join(', ')} · sortie longue le ${U.DAYS[h.longDay].toLowerCase()} · niveau ${({ debutant: 'débutant', intermediaire: 'intermédiaire', confirme: 'confirmé' })[h.level]}${from}.</p>
+        <p class="small" style="margin:8px 0 0"><b>Reporté dans le formulaire ci-dessous :</b> vérifie et ajuste si besoin.</p>
+        ${trail}</div>`;
+    } else if (h) {
+      res = `<div class="banner warn">${icon('warn')}<div>${h.nRuns} sortie(s) de course trouvée(s) sur 6 mois (${h.count} activités lues) : il faut au moins 4 sorties sur les 8 dernières semaines pour analyser ton historique.</div></div>`;
+    }
+    const stravaPart = cfg.refresh
+      ? `<button class="btn dark" type="button" data-action="history-strava" ${ui.busy ? 'disabled' : ''}>${icon('sync')}${ui.busy ? 'Analyse en cours…' : 'Analyser mon Strava'}</button>`
+      : '';
+    return `<div class="card"><h2>${icon('bolt')} Personnaliser avec ton historique</h2>
+      <p class="muted small" style="margin-top:0">RunwoW lit tes sorties des 6 derniers mois et en déduit ton volume, ta plus longue sortie, tes jours habituels, ta VMA et ton niveau.</p>
+      <div class="btn-group">${stravaPart}
+        <label class="btn">${icon('download')}Importer l'export Strava<input type="file" accept=".zip,.csv,application/zip,text/csv" data-action="history-file" hidden></label></div>
+      ${res}
+      <details class="help"><summary>Comment obtenir l'export Strava ?</summary>
+        <ol class="steps"><li>Sur strava.com (ordinateur) : Paramètres › Mon compte › <b>Télécharger ou supprimer votre compte</b> › Commencer.</li>
+        <li>Clique sur <b>Demander une archive</b> : Strava t'envoie un e-mail avec un lien (quelques minutes à quelques heures).</li>
+        <li>Télécharge le .zip et importe-le ici tel quel, ou seulement le fichier <code>activities.csv</code> qu'il contient.</li></ol>
+        <p class="muted small">Le fichier est lu sur ton appareil, rien n'est envoyé ailleurs.</p></details>
+      ${cfg.refresh ? '' : `<details class="help"><summary>Ou connecter Strava pour une analyse directe</summary>${stravaConnectHTML()}</details>`}
+      </div>`;
+  }
+
+  function applyHistory(base, h) {
+    const p = { ...base, currentKm: h.currentKm, longestKm: h.longestKm, runDays: h.runDays, longDay: h.longDay, level: h.level };
+    if (h.vmaFrom && h.vmaFrom.race) Object.assign(p, { refDistKm: h.vmaFrom.km, refTime: h.vmaFrom.time, vma: '' });
+    else if (h.vma) Object.assign(p, { vma: h.vma, refDistKm: '', refTime: '' });
+    return p;
+  }
+
+  function runHistory(acts, src) {
+    const form = document.querySelector('[data-form="setup"]');
+    const base = form ? readSetup(form) : (ui.draft || state.profile);
+    const h = RP.history.analyze(acts, U.todayISO());
+    ui.history = { ...h, src, count: acts.length };
+    if (h.enough) ui.draft = applyHistory(base, h);
+    else if (form) ui.draft = base;
+    render();
+    toast(h.enough ? `Historique analysé (${src}) : profil pré-rempli.` : 'Pas assez de sorties récentes pour analyser ton historique.');
+  }
+
   // ---------- Carte Garmin & Strava ----------
   function renderSyncCard() {
     const cfg = RP.strava.load();
@@ -573,15 +642,7 @@
       strava = `<p style="margin:0 0 8px">Application Strava enregistrée (Client ID ${esc(cfg.clientId)}).</p>
         <div class="btn-group"><button class="btn primary" data-action="strava-connect">Connecter mon compte Strava</button><button class="btn" data-action="strava-forget">Changer d'application</button></div>`;
     } else {
-      strava = `<ol class="steps">
-          <li>Sur <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>, crée une application : nom « RunwoW », catégorie « Training », site web <code>https://${esc(host)}</code>, <b>Authorization Callback Domain : <code>${esc(host)}</code></b>.</li>
-          <li>Copie ci-dessous le <b>Client ID</b> et le <b>Client Secret</b>.</li>
-          <li>Connecte ton compte et autorise l'accès aux activités.</li></ol>
-        <form class="form" data-form="strava"><div class="grid2">
-          <div class="field"><label class="lbl" for="st-id">Client ID</label><input id="st-id" name="clientId" type="text" inputmode="numeric" autocomplete="off" required></div>
-          <div class="field"><label class="lbl" for="st-secret">Client Secret</label><input id="st-secret" name="clientSecret" type="text" autocomplete="off" spellcheck="false" required></div>
-        </div><button class="btn primary" type="submit">Enregistrer et connecter</button></form>
-        <p class="muted small">C'est ta propre application Strava : l'identifiant et le secret restent sur cet appareil et ne sont pas inclus dans l'export.</p>`;
+      strava = stravaConnectHTML();
     }
     return `<div class="card"><h2>${icon('watch')} Montre Garmin</h2>
         <p class="muted small" style="margin-top:0">Chaque séance de course s'exporte en entraînement structuré : étapes, répétitions, allures cibles avec alerte.</p>
@@ -629,7 +690,7 @@
     return U.fmtISO(U.weekday(d) === 0 ? m : U.addDays(m, 7));
   }
   function renderSetup() {
-    const p = state.profile || {
+    const p = ui.draft || state.profile || {
       mode: 'race', trainingWeeks: 12, distanceKm: 10, terrain: 'route', dplus: '', raceDate: '', startDate: nextMonday(), targetTime: '', raceName: '',
       level: 'intermediaire', currentKm: 20, longestKm: 10, refDistKm: '', refTime: '', vma: '',
       runDays: [1, 3, 6], longDay: 6, strengthPerWeek: 2, equipment: 'aucun', mobility: '3x', injuries: [],
@@ -653,6 +714,7 @@
           <label><input type="radio" name="mode" value="training" ${mode === 'training' ? 'checked' : ''}>Juste m'entraîner<span>cycles sans course</span></label>
         </div>
       </div>
+      ${historyCardHTML()}
       <div class="card"><h2 data-when="race" ${hide(mode === 'race')}>Objectif</h2><h2 data-when="training" ${hide(mode === 'training')}>Orientation de l'entraînement</h2>
         <div class="field"><div class="choices" role="group" aria-label="Distances courantes">${PRESETS.map(([l, d, t]) => `<button type="button" class="btn small" data-action="preset" data-dist="${d}" data-terrain="${t}">${l}</button>`).join('')}</div></div>
         <div class="grid2">
@@ -827,6 +889,30 @@
       case 'strava-connect':
         location.href = RP.strava.authorizeUrl(RP.strava.load());
         break;
+      case 'strava-save': {
+        const box = a.parentElement;
+        const clientId = (box.querySelector('[data-strava="clientId"]').value || '').trim();
+        const clientSecret = (box.querySelector('[data-strava="clientSecret"]').value || '').trim();
+        if (!/^\d+$/.test(clientId) || clientSecret.length < 20) { toast('Vérifie le Client ID (chiffres) et le Client Secret (longue suite de caractères).'); break; }
+        const form = document.querySelector('[data-form="setup"]');
+        if (form) ui.draft = readSetup(form); // garde la saisie en cours (perdue sinon au retour de Strava)
+        try { sessionStorage.setItem('runwow-draft', JSON.stringify(ui.draft)); } catch (e) { /* facultatif */ }
+        const cfg = { clientId, clientSecret };
+        RP.strava.save(cfg);
+        location.href = RP.strava.authorizeUrl(cfg);
+        break;
+      }
+      case 'history-strava': {
+        if (ui.busy) break;
+        ui.busy = true;
+        const form = document.querySelector('[data-form="setup"]');
+        if (form) ui.draft = readSetup(form);
+        render();
+        RP.strava.fetchActivities(U.fmtISO(U.addDays(new Date(), -7 * RP.history.RULES.vmaWeeks - 7)))
+          .then((acts) => { ui.busy = false; runHistory(acts, 'Strava'); })
+          .catch((e) => { ui.busy = false; render(); toast(e.message); });
+        break;
+      }
       case 'strava-sync':
         syncStrava(false);
         break;
@@ -872,6 +958,13 @@
   });
 
   document.addEventListener('change', (ev) => {
+    if (ev.target.dataset.action === 'history-file') {
+      const file = ev.target.files[0];
+      if (!file) return;
+      toast('Lecture de l\'export…');
+      RP.history.readExport(file).then((acts) => runHistory(acts, 'export Strava')).catch((e) => toast(e.message || 'Fichier illisible.'));
+      return;
+    }
     if (ev.target.dataset.action !== 'import') return;
     const file = ev.target.files[0];
     if (!file) return;
@@ -893,7 +986,7 @@
       const p = readSetup(form);
       const errs = validate(p);
       ui.setupErrors = errs;
-      if (errs.length) { render(); window.scrollTo(0, 0); return; }
+      if (errs.length) { ui.draft = p; render(); window.scrollTo(0, 0); return; }
       const first = !state.profile;
       // Le suivi est indexé par semaine : si le début du plan change, il ne correspond plus.
       if (!first && U.fmtISO(U.mondayOf(U.parseDate(state.profile.startDate))) !== U.fmtISO(U.mondayOf(U.parseDate(p.startDate)))) {
@@ -904,7 +997,9 @@
       state.profile = p;
       saveState();
       regen();
-      if (planError) { ui.setupErrors = [planError]; render(); return; }
+      if (planError) { ui.setupErrors = [planError]; ui.draft = p; render(); return; }
+      ui.draft = null;
+      ui.history = null;
       location.hash = '#/aujourdhui';
       render();
       toast(first ? `Plan généré : ${plan.nWeeks} semaines.` : 'Profil enregistré, plan recalculé.');
@@ -931,9 +1026,19 @@
     if (ev.key === 'Escape' && ui.modalId) { ui.modalId = null; renderModal(); }
   });
 
-  window.addEventListener('hashchange', () => { ui.modalId = null; ui.setupErrors = []; render(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', () => {
+    ui.modalId = null;
+    ui.setupErrors = [];
+    if (route() !== 'profil') { ui.draft = null; ui.history = null; }
+    render();
+    window.scrollTo(0, 0);
+  });
 
   // ---------- Démarrage ----------
+  try { // saisie du profil gardée pendant l'aller-retour vers Strava
+    const d = sessionStorage.getItem('runwow-draft');
+    if (d) { ui.draft = JSON.parse(d); sessionStorage.removeItem('runwow-draft'); }
+  } catch (e) { /* facultatif */ }
   regen();
   evaluate();
   render();

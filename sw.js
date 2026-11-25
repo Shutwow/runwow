@@ -1,10 +1,10 @@
 /* Service worker : l'appli fonctionne hors ligne (cache de l'interface). */
-const CACHE = 'runwow-v3';
+const CACHE = 'runwow-v4';
 const ASSETS = [
   './', './index.html', './css/style.css', './manifest.webmanifest', './icon.svg',
   './js/engine/util.js', './js/engine/paces.js', './js/data/exercises.js', './js/engine/strength.js',
   './js/engine/plan.js', './js/engine/replan.js', './js/engine/rules.js', './js/app.js',
-  './js/sync/fit.js', './js/sync/zip.js', './js/sync/strava.js', './js/sync/match.js',
+  './js/sync/fit.js', './js/sync/zip.js', './js/sync/strava.js', './js/sync/match.js', './js/sync/history.js',
 ];
 
 self.addEventListener('install', (e) => {
