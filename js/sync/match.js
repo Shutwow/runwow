@@ -19,10 +19,11 @@
     const byDate = {};
     Object.values(state.activities || {}).forEach((a) => {
       if (!RUN_TYPES.has(a.type) || a.date < plan.planStart || a.date > plan.raceDate) return;
-      const g = byDate[a.date] || (byDate[a.date] = { km: 0, elev: 0, names: [] });
+      const g = byDate[a.date] || (byDate[a.date] = { km: 0, elev: 0, names: [], ids: [] });
       g.km += a.km;
       g.elev += a.elev || 0;
       g.names.push(a.name);
+      g.ids.push(a.id);
     });
 
     const runsOfWeek = (w) => w.days.flatMap((d) => d.items.filter((i) => i.kind === 'run'));
@@ -41,7 +42,7 @@
       const km = plan.c.trail ? g.km + g.elev / 100 : g.km;
       const ratio = it.km ? km / it.km : 1;
       used.add(it.id);
-      state.syncInfo[it.id] = { km: U.round1(km), names: g.names, date, ratio };
+      state.syncInfo[it.id] = { km: U.round1(km), names: g.names, ids: g.ids, date, ratio };
       if (ratio >= DONE || it.sub === 'race') { state.statuses[it.id] = 'done'; report.done++; } else if (ratio >= PARTIAL) { state.statuses[it.id] = 'partial'; report.partial++; } else { report.ignored++; return; }
       state.statusSource[it.id] = 'strava';
     });

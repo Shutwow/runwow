@@ -115,7 +115,7 @@
       }
       for (let i = startWeek; i < retWeek; i++) state.evaluated[i] = { rule: 'R4' };
       const taperStart = plan.weeks.findIndex((w) => w.phase === 'affutage');
-      if (retWeek >= taperStart - 1) msgs.push('Attention : la reprise tombe juste avant l\'affûtage. Revois ton objectif de temps à la baisse.');
+      if (taperStart >= 0 && retWeek >= taperStart - 1) msgs.push('Attention : la reprise tombe juste avant l\'affûtage. Revois ton objectif de temps à la baisse.');
       if (rule.warn) msgs.push('Coupure de plus de 4 semaines : l\'objectif est probablement à repousser. Tu peux recréer un plan depuis les réglages.');
     }
     state.breaks = state.breaks || [];

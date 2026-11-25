@@ -1,5 +1,5 @@
 /* Service worker : l'appli fonctionne hors ligne (cache de l'interface). */
-const CACHE = 'runwow-v2';
+const CACHE = 'runwow-v3';
 const ASSETS = [
   './', './index.html', './css/style.css', './manifest.webmanifest', './icon.svg',
   './js/engine/util.js', './js/engine/paces.js', './js/data/exercises.js', './js/engine/strength.js',

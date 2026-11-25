@@ -13,6 +13,14 @@
       ],
     },
     {
+      group: 'Mode entraînement (sans course)',
+      items: [
+        ['Cycles', 'Le plan avance par cycles de 8, 12 ou 16 semaines (ou en continu, par cycles de 12). Chaque cycle enchaîne base, construction et spécifique, avec la même progression de 10 % et les mêmes semaines allégées.'],
+        ['Orientation', 'La distance choisie (5 km, 10 km, semi, marathon, trail…) oriente les séances de qualité, sans affûtage ni course.'],
+        ['Semaine test', 'La dernière semaine de chaque cycle est allégée et comporte un test chrono (5 km, ou 3 km pour un débutant ; 30 min sur parcours de référence en trail). Reporte le chrono dans ton profil : les allures du cycle suivant sont recalculées.'],
+      ],
+    },
+    {
       group: 'Placement dans la semaine',
       items: [
         ['Séances dures', 'Jamais deux séances dures (qualité ou sortie longue) deux jours de suite. Jamais de séance de qualité la veille de la sortie longue. Le lendemain de la sortie longue est évité. Les séances dures sont espacées au maximum.'],

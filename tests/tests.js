@@ -24,12 +24,14 @@
   ];
   const DAYSETS = [[5, 6], [1, 3, 6], [1, 3, 5, 6], [0, 1, 3, 4, 6], [0, 1, 2, 3, 4, 5, 6], [1, 2, 4, 5]];
   const LEVELS = [['debutant', 10], ['intermediaire', 30], ['confirme', 55]];
-  const DURATIONS = [5, 12, 20, 30];
+  const DURATIONS = [5, 12, 20, 30, 'T8', 'T12', 'T52']; // Tn = mode entraînement, cycle de n semaines
   const start = '2026-12-07'; // un lundi
 
   function profileFor(g, days, lvl, weeks, k) {
-    const race = U.fmtISO(U.addDays(U.parseDate(start), weeks * 7 - 1 - (k % 3)));
+    const training = typeof weeks === 'string';
+    const race = training ? '' : U.fmtISO(U.addDays(U.parseDate(start), weeks * 7 - 1 - (k % 3)));
     return {
+      mode: training ? 'training' : 'race', trainingWeeks: training ? +weeks.slice(1) : undefined,
       ...g, raceDate: race, startDate: start, level: lvl[0], currentKm: lvl[1], longestKm: lvl[1] * 0.4,
       runDays: days, longDay: days.includes(6) ? 6 : days[days.length - 1], strengthPerWeek: k % 4,
       equipment: RP.EQUIP_LEVELS[k % 4], mobility: ['minimum', '3x', 'quotidien'][k % 3],
@@ -50,7 +52,18 @@
     // Race on race date
     const last = plan.weeks[plan.weeks.length - 1];
     const raceItem = last.days.flatMap((d) => d.items).find((i) => i.sub === 'race');
-    check(raceItem && raceItem.date === profile.raceDate, `${tag} course absente ou mauvaise date`);
+    if (profile.mode === 'training') {
+      stats.trainingPlans = (stats.trainingPlans || 0) + 1;
+      check(plan.nWeeks === profile.trainingWeeks, `${tag} durée du cycle`);
+      check(!plan.weeks.some((w) => w.type === 'race' || w.type === 'taper'), `${tag} course ou affûtage en mode entraînement`);
+      check(last.type === 'test', `${tag} la dernière semaine n'est pas un test`);
+      plan.weeks.filter((w) => w.type === 'test').forEach((w) => {
+        const tst = w.days.flatMap((d) => d.items).find((i) => i.qType === 'test');
+        check(tst || w.notes.length, `${tag} S${w.index + 1} semaine test sans test`);
+      });
+    } else {
+      check(raceItem && raceItem.date === profile.raceDate, `${tag} course absente ou mauvaise date`);
+    }
 
     let prevLoad = null;
     let prevTaper = null;

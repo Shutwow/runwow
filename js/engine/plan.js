@@ -50,7 +50,7 @@
     specifique: 'Travailler l\'allure et les conditions de la course, renfo orienté puissance.',
     affutage: 'Réduire le volume en gardant un peu d\'intensité, pour arriver frais le jour J.',
   };
-  const WEEK_TYPE_LABELS = { load: 'Charge', recovery: 'Semaine allégée', taper: 'Affûtage', race: 'Semaine de course', reprise: 'Reprise' };
+  const WEEK_TYPE_LABELS = { load: 'Charge', recovery: 'Semaine allégée', taper: 'Affûtage', race: 'Semaine de course', reprise: 'Reprise', test: 'Semaine test' };
   const HARD_ZONES = new Set(['marathon', 'seuil', 'a10k', 'a5k', 'vma', 'race', 'cote', 'cote_seuil']);
 
   function categorize(distKm, terrain) {
@@ -90,7 +90,8 @@
     P.ZONES.forEach((zz) => { z[zz.id] = P.zoneSpeed(vma, zz.id); });
     const trail = !!cat.trail;
     const raceKm = +profile.distanceKm;
-    const dplus = trail ? +profile.dplus || 0 : 0;
+    // En mode entraînement trail sans D+ renseigné : 40 m de D+ par km.
+    const dplus = trail ? +profile.dplus || (profile.mode === 'training' ? Math.round(+profile.distanceKm * 40) : 0) : 0;
     const raceEffortKm = raceKm + dplus / 100;
     const refKm = trail ? raceEffortKm : raceKm;
     const predictedMin = P.predictTime(vma, refKm);
@@ -224,6 +225,18 @@
             blocks: [WU(c, 15), { label: `${n} × ${d}' à allure course (${race})${n > 1 ? ' — récupération 3\'' : ''}`, parts: [{ zone: 'race', min: n * d }, { zone: 'recup', min: (n - 1) * 3 }], rep: REP(n, { zone: 'race', min: d, name: 'Allure course' }, { zone: 'recup', min: 3 }) }, CD(c, 10)] };
         }
       }
+    },
+    // Mode entraînement : test de fin de cycle pour mesurer les progrès et recalculer les allures.
+    test: (p, c) => {
+      if (c.trail) {
+        return { title: 'Test de fin de cycle', focus: 'Mesurer tes progrès : compare la distance et le D+ avec le test du cycle précédent.',
+          blocks: [WU(c, 20), { label: '30\' à effort soutenu et régulier sur ton parcours vallonné de référence — note la distance et le D+', parts: [{ zone: 'seuil', min: 30 }] }, CD(c, 10)],
+          notes: ['Fais toujours le test sur le même parcours pour pouvoir comparer.'] };
+      }
+      const km = c.level === 'debutant' ? 3 : 5;
+      return { title: `Test ${km} km`, focus: 'Mesurer tes progrès et recalculer tes allures.',
+        blocks: [WU(c, 20), { label: `${km} km chrono, le plus régulier possible (départ prudent, accélère sur le dernier km)`, parts: [{ zone: 'a5k', km }] }, CD(c, 10)],
+        notes: [`Reporte ton chrono dans ton profil (course de référence : ${km} km) : tes allures seront recalculées pour le cycle suivant.`] };
     },
     rappel: (p, c, k) => {
       if (c.trail) {
@@ -370,7 +383,7 @@
   }
 
   function strengthTypeFor(w, k) {
-    if (w.type === 'recovery' || w.type === 'taper' || w.type === 'race') return 'entretien';
+    if (w.type === 'recovery' || w.type === 'taper' || w.type === 'race' || w.type === 'test') return 'entretien';
     if (w.type === 'reprise') return 'fondation';
     if (w.phase === 'specifique') return ['puissance', 'force', 'entretien'][k] || 'entretien';
     if (w.phase === 'construction') return k < 2 ? 'force' : 'fondation';
@@ -486,7 +499,7 @@
     // 2) Séances de qualité : nombre, jours, puis dosage dans la limite de 20 % d'intensité
     let nQ = 0;
     if (w.type === 'load') nQ = runDays.length >= 4 ? 2 : 1;
-    else if (w.type === 'taper') nQ = 1;
+    else if (w.type === 'taper' || w.type === 'test') nQ = 1;
     if (profile.level === 'debutant' && w.phase === 'base') nQ = Math.min(nQ, 1);
     if (w.noQuality) nQ = 0;
     const fixedHard = [longDay, b2bDay].filter((d) => d != null);
@@ -496,6 +509,7 @@
 
     let qTypes;
     if (w.type === 'taper') qTypes = ['rappel'];
+    else if (w.type === 'test') qTypes = ['test'];
     else {
       const list = QUALITY[c.catId][w.phase];
       qTypes = qDays.length >= 2 ? [list[0], list[1]] : [list[w.loadIndex % 2]];
@@ -576,7 +590,7 @@
     const runSet = new Set(days.filter((d) => d.items.some((i) => i.kind === 'run')).map((d) => d.day));
     const restDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => !runSet.has(d));
     let nS = nStrengthWanted;
-    if (['recovery', 'taper', 'reprise'].includes(w.type)) nS = Math.min(nS, 1);
+    if (['recovery', 'taper', 'reprise', 'test'].includes(w.type)) nS = Math.min(nS, 1);
     const sDays = placeStrength(nS, { qDays, longDays: fixedHard, restDays, easyDays: kept });
     sDays.sort((a, b) => a - b).forEach((d, i) => {
       const type = strengthTypeFor(w, i);
@@ -641,6 +655,26 @@
     return out;
   }
 
+  // Mode entraînement : cycles de 12 semaines au plus (base → construction → spécifique),
+  // la dernière semaine de chaque cycle est une semaine test.
+  function buildTrainingPhases(nWeeks) {
+    const L = nWeeks <= 16 ? nWeeks : 12;
+    const out = [];
+    for (let start = 0; start < nWeeks; start += L) {
+      const len = Math.min(L, nWeeks - start);
+      const body = len - 1;
+      const base = Math.round(body * 0.4);
+      const cons = Math.round(body * 0.35);
+      const spec = body - base - cons;
+      const push = (phase, n) => { for (let i = 0; i < n; i++) out.push({ phase, weekInPhase: i, phaseLen: n }); };
+      push('base', base);
+      push('construction', cons);
+      push('specifique', spec);
+      out.push({ phase: spec ? 'specifique' : cons ? 'construction' : 'base', weekInPhase: Math.max(spec, 0), phaseLen: Math.max(spec, 1), test: true });
+    }
+    return out;
+  }
+
   function summarize(week) {
     let km = 0;
     let min = 0;
@@ -673,11 +707,19 @@
     const overrides = state.overrides || {};
     const c = makeContext(profile);
     const planStart = U.mondayOf(U.parseDate(profile.startDate));
-    const raceDate = U.parseDate(profile.raceDate);
-    const totalDays = U.daysBetween(planStart, raceDate);
-    if (!(totalDays >= 0)) throw new Error('La date de course doit être après la date de début.');
-    const nWeeks = Math.floor(totalDays / 7) + 1;
-    const phases = buildPhases(nWeeks, c.cat);
+    const training = profile.mode === 'training';
+    let nWeeks;
+    let endISO;
+    if (training) {
+      nWeeks = U.clamp(+profile.trainingWeeks || 12, 4, 52);
+      endISO = U.fmtISO(U.addDays(planStart, nWeeks * 7 - 1));
+    } else {
+      const totalDays = U.daysBetween(planStart, U.parseDate(profile.raceDate));
+      if (!(totalDays >= 0)) throw new Error('La date de course doit être après la date de début.');
+      nWeeks = Math.floor(totalDays / 7) + 1;
+      endISO = profile.raceDate;
+    }
+    const phases = training ? buildTrainingPhases(nWeeks) : buildPhases(nWeeks, c.cat);
     const taperStart = phases.findIndex((x) => x.phase === 'affutage');
     const nDays = (profile.runDays || []).length;
 
@@ -687,7 +729,7 @@
     const peakWanted = Math.max(c.cat.peak[profile.level] || c.cat.peak.intermediaire, startVol);
     const peakTarget = Math.min(peakWanted, feasible);
     const warnings = c.warnings.slice();
-    if (nWeeks < c.cat.minWeeks) warnings.push(`Préparation courte : ${nWeeks} semaine(s) pour un objectif ${c.cat.label.toLowerCase()}, ${c.cat.minWeeks} conseillées au minimum. Le plan est compressé.`);
+    if (!training && nWeeks < c.cat.minWeeks) warnings.push(`Préparation courte : ${nWeeks} semaine(s) pour un objectif ${c.cat.label.toLowerCase()}, ${c.cat.minWeeks} conseillées au minimum. Le plan est compressé.`);
     if (nDays < c.cat.minDays) warnings.push(`${nDays} jour(s) de course par semaine : ${c.cat.minDays} sont conseillés pour cet objectif.`);
     if (feasible < peakWanted * 0.95) warnings.push(`Avec ${nDays} jour(s) de course, le volume est plafonné à environ ${Math.round(feasible)} km par semaine (footings de ${RULE.easyMaxMin[profile.level]} min maximum, sortie longue limitée à ${U.fmtDuration(c.cat.longMaxMin)}). Ajoute un jour de course pour atteindre les ${Math.round(peakWanted)} km conseillés.`);
 
@@ -704,6 +746,10 @@
       if (ph.phase === 'affutage') {
         type = i === nWeeks - 1 ? 'race' : 'taper';
         v = Math.min(maxLoad * TAPER[ph.phaseLen][ph.weekInPhase], lastLoad);
+      } else if (ph.test && i > 0) {
+        type = 'test';
+        v = lastLoad * RULE.recoveryFactor;
+        loadCount = 0;
       } else if (i === 0) {
         type = 'load';
         v = startVol;
@@ -775,7 +821,7 @@
 
     return {
       profile, c, weeks, nWeeks, peakTarget: U.round1(peakTarget), maxLoad: U.round1(maxLoad), warnings,
-      planStart: U.fmtISO(planStart), raceDate: profile.raceDate,
+      planStart: U.fmtISO(planStart), raceDate: endISO, training,
     };
   }
 
